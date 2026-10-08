@@ -113,3 +113,5 @@ python scripts/cases_csv_to_geojson.py 115養護.csv --year 115 --label "115年�
 ```bash
 python -m http.server 8765
 ```
+
+> 更新 css／js 後，請把 `index.html`、`admin.html` 中的 `?v=…` 版本號改掉，避免使用者瀏覽器讀到舊檔。
