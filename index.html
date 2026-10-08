@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>臺南市安定區公眾通行道路圖資系統</title>
+<meta name="description" content="臺南市安定區公眾通行道路（農路、產業道路、區道）查詢、道路通報與維修案件公開地圖。">
+<meta name="theme-color" content="#1C5FC4">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===== 側欄 / 行動版底部抽屜 ===== -->
+<aside id="panel" class="sheet-half" aria-label="功能面板">
+  <div class="sheet-handle" id="sheetHandle" role="button" tabindex="0" aria-label="展開或收合面板"><span></span></div>
+
+  <header class="brand">
+    <svg class="hero" viewBox="0 0 400 150" aria-hidden="true" preserveAspectRatio="xMidYMid slice">
+      <rect width="400" height="150" fill="#FBF3E2"/>
+      <circle cx="338" cy="34" r="16" fill="#E3001B"/>
+      <path d="M0 92 L60 58 L96 76 L150 40 L214 82 L250 64 L300 88 L400 70 L400 150 L0 150Z" fill="#BFDDF3"/>
+      <path d="M150 40 L172 54 L160 56 L150 50 L140 57 L132 52Z" fill="#fff"/>
+      <path d="M0 104 C60 92 110 110 170 100 C240 88 300 106 400 94 L400 150 L0 150Z" fill="#7CC24B"/>
+      <path d="M0 122 C80 112 140 128 220 118 C290 110 340 124 400 116 L400 150 L0 150Z" fill="#4FA640"/>
+      <path d="M-10 140 C60 130 90 112 150 116 C210 120 210 98 270 100 C330 102 360 88 410 90" stroke="#3C8DDE" stroke-width="12" fill="none" stroke-linecap="round"/>
+      <path d="M40 150 C70 128 120 128 150 132 C200 138 230 126 260 112 C290 98 330 104 360 112" stroke="#F39200" stroke-width="10" fill="none"/>
+      <path d="M40 150 C70 128 120 128 150 132 C200 138 230 126 260 112 C290 98 330 104 360 112" stroke="#fff" stroke-width="1.6" stroke-dasharray="6 6" fill="none"/>
+      <g transform="translate(286 74)"><rect width="22" height="16" fill="#fff"/><path d="M-3 0 L11 -10 L25 0Z" fill="#E3001B"/><rect x="8" y="7" width="6" height="9" fill="#1C5FC4"/></g>
+      <g transform="translate(316 80)"><rect width="16" height="12" fill="#fff"/><path d="M-2 0 L8 -8 L18 0Z" fill="#1C5FC4"/></g>
+      <g transform="translate(70 92)"><rect x="5" y="8" width="3" height="10" fill="#7a5230"/><circle cx="6.5" cy="6" r="8" fill="#2E8B3E"/></g>
+      <g transform="translate(96 98)"><rect x="4" y="6" width="3" height="8" fill="#7a5230"/><circle cx="5.5" cy="5" r="6" fill="#2E8B3E"/></g>
+      <g fill="#fff" opacity=".9"><ellipse cx="190" cy="124" rx="5" ry="3.4"/><ellipse cx="203" cy="127" rx="5" ry="3.4"/></g>
+    </svg>
+    <div class="brand-text">
+      <p class="eyebrow">臺南市安定區</p>
+      <h1>公眾通行道路<br>圖資系統</h1>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="功能分頁">
+    <button role="tab" data-tab="roads" aria-selected="true"><i class="ico">🛣️</i><span>道路</span></button>
+    <button role="tab" data-tab="cases"><i class="ico">🚧</i><span>施工</span></button>
+    <button role="tab" data-tab="report"><i class="ico">📣</i><span>通報</span></button>
+    <button role="tab" data-tab="tools"><i class="ico">🧭</i><span>工具</span></button>
+    <button role="tab" data-tab="news"><i class="ico">📰</i><span>公告</span></button>
+  </nav>
+
+  <div class="panel-body">
+
+    <!-- ===== 道路查詢 ===== -->
+    <section id="tab-roads" class="tab-pane active" role="tabpanel">
+      <div class="stat-row" id="statRow"></div>
+
+      <div class="search-box">
+        <input id="roadSearch" type="search" placeholder="搜尋路名、編號、里別…" autocomplete="off" aria-label="搜尋道路">
+      </div>
+
+      <div class="chip-group" id="clsChips" aria-label="道路等級篩選"></div>
+
+      <label class="select-label">里別
+        <select id="villageFilter"><option value="">全部 13 里</option></select>
+      </label>
+
+      <div class="list-head"><span id="roadCount">—</span><button class="link-btn" id="sortBtn">依長度排序</button></div>
+      <ul class="road-list" id="roadList" aria-live="polite"></ul>
+      <button class="btn ghost full" id="moreRoads" hidden>顯示更多</button>
+    </section>
+
+    <!-- ===== 施工 / 維修案件公開 ===== -->
+    <section id="tab-cases" class="tab-pane" role="tabpanel">
+      <div class="card tone-blue">
+        <h2>施工／維修案件公開</h2>
+        <p class="muted">勾選年度與類別，於地圖顯示案件位置；顏色由深至淺代表完工時間由近至遠。</p>
+        <div id="caseGroups"><p class="muted">載入中…</p></div>
+        <div class="btn-row">
+          <button class="btn ghost" id="caseClear">清除顯示</button>
+          <button class="btn ghost" id="caseCsv">下載 CSV</button>
+        </div>
+      </div>
+
+      <div class="card" id="liveCard">
+        <h2>民眾通報看板</h2>
+        <label class="switch"><input type="checkbox" id="liveToggle"> <span>顯示通報案件</span></label>
+        <div class="legend-inline">
+          <span><i class="dot" style="background:#E3001B"></i>待處理</span>
+          <span><i class="dot" style="background:#F39200"></i>處理中</span>
+          <span><i class="dot" style="background:#2E9E4F"></i>已完成</span>
+        </div>
+        <p class="muted small" id="liveHint"></p>
+      </div>
+
+      <div class="card">
+        <h2>里別統計</h2>
+        <div id="villageStats" class="bars"></div>
+      </div>
+    </section>
+
+    <!-- ===== 道路通報 ===== -->
+    <section id="tab-report" class="tab-pane" role="tabpanel">
+      <ol class="stepper" id="stepper">
+        <li class="on">照片</li><li>位置</li><li>狀況</li><li>送出</li>
+      </ol>
+
+      <form id="reportForm" novalidate>
+        <div class="step" data-step="1">
+          <h2>1. 拍下現場</h2>
+          <p class="muted">照片若含 GPS 資訊，系統會自動帶入位置。照片僅供公所處理通報使用，不會公開於地圖。</p>
+          <label class="drop" id="photoDrop">
+            <input type="file" id="photoInput" accept="image/*" multiple hidden>
+            <span class="drop-ico">📷</span>
+            <b>拍照或選擇照片</b>
+            <small>最多 3 張</small>
+          </label>
+          <div class="thumbs" id="thumbs"></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-next>下一步：確認位置</button></div>
+        </div>
+
+        <div class="step" data-step="2" hidden>
+          <h2>2. 確認位置</h2>
+          <p class="muted">在地圖上點選事發地點，或使用目前位置。</p>
+          <div class="btn-row">
+            <button type="button" class="btn ghost" id="useGps">📍 使用目前位置</button>
+            <button type="button" class="btn ghost" id="pickOnMap">🖱️ 在地圖上點選</button>
+          </div>
+          <div class="loc-box" id="locBox">尚未選擇位置</div>
+          <div class="btn-row"><button type="button" class="btn ghost" data-prev>上一步</button><button type="button" class="btn primary" data-next>下一步：描述狀況</button></div>
+        </div>
+
+        <div class="step" data-step="3" hidden>
+          <h2>3. 描述狀況</h2>
+          <div class="chip-group" id="issueChips" role="radiogroup" aria-label="狀況類別"></div>
+          <label class="field">說明
+            <textarea id="issueDesc" rows="3" maxlength="300" placeholder="例：路面坑洞約 1 公尺寬，機車經過危險"></textarea>
+          </label>
+          <label class="field">聯絡方式（選填，不公開）
+            <input id="contact" type="text" maxlength="60" placeholder="姓名／電話，方便公所回覆">
+          </label>
+          <input type="text" id="hp" name="website" tabindex="-1" autocomplete="off" class="hp" aria-hidden="true">
+          <div class="btn-row"><button type="button" class="btn ghost" data-prev>上一步</button><button type="button" class="btn primary" data-next>下一步：確認送出</button></div>
+        </div>
+
+        <div class="step" data-step="4" hidden>
+          <h2>4. 確認送出</h2>
+          <div id="reviewBox" class="review"></div>
+          <div class="btn-row">
+            <button type="button" class="btn ghost" data-prev>上一步</button>
+            <button type="submit" class="btn primary" id="submitReport">🚀 送出通報</button>
+          </div>
+          <p class="muted small" id="submitNote"></p>
+        </div>
+      </form>
+
+      <div class="card tone-red small-card">
+        緊急危險（坍方、路樹倒塌阻斷交通）請直接撥打 <a href="tel:1999"><b>1999</b></a> 臺南市民服務專線，或 <a href="tel:110"><b>110</b></a>。
+      </div>
+
+      <div class="card" id="myReportsCard" hidden>
+        <h2>我的通報紀錄（本機）</h2>
+        <ul class="mini-list" id="myReports"></ul>
+      </div>
+    </section>
+
+    <!-- ===== 工具 ===== -->
+    <section id="tab-tools" class="tab-pane" role="tabpanel">
+      <details class="card" open>
+        <summary><h2>座標定位／半徑查詢</h2></summary>
+        <p class="muted">每行一組座標，支援 TWD97（X,Y）與 WGS84（經度,緯度 或 緯度,經度）。可用於登革熱孳生源、案件位置等半徑範圍查詢。</p>
+        <textarea id="coordInput" rows="3" placeholder="例：&#10;169850, 2558600&#10;23.1050, 120.2290"></textarea>
+        <div class="seg" id="radiusSeg" role="radiogroup" aria-label="查詢半徑">
+          <button type="button" data-r="0" class="on">不畫圈</button>
+          <button type="button" data-r="50">50 m</button>
+          <button type="button" data-r="100">100 m</button>
+          <button type="button" data-r="150">150 m</button>
+          <button type="button" data-r="300">300 m</button>
+        </div>
+        <div class="btn-row"><button class="btn primary" id="coordGo">定位</button><button class="btn ghost" id="coordClear">清除</button></div>
+        <div id="coordResult"></div>
+      </details>
+
+      <details class="card">
+        <summary><h2>點地圖查座標</h2></summary>
+        <p class="muted">開啟後點擊地圖任一處，顯示 WGS84 / TWD97 座標、所屬里別與最近道路。</p>
+        <label class="switch"><input type="checkbox" id="identifyToggle"> <span>開啟點查</span></label>
+      </details>
+
+      <details class="card">
+        <summary><h2>距離量測</h2></summary>
+        <p class="muted">依序點擊地圖量測折線距離，雙擊或按「完成」結束。</p>
+        <div class="btn-row"><button class="btn ghost" id="measureBtn">開始量測</button><button class="btn ghost" id="measureClear">清除</button></div>
+        <p class="measure-out" id="measureOut"></p>
+      </details>
+
+      <details class="card">
+        <summary><h2>外部查詢</h2></summary>
+        <ul class="link-list">
+          <li><a href="https://addressrs.moi.gov.tw/address/index.cfm?city_id=67000" target="_blank" rel="noopener">臺南市門牌查詢（內政部）</a></li>
+          <li><a href="https://maps.nlsc.gov.tw/" target="_blank" rel="noopener">國土測繪圖資服務雲（地籍）</a></li>
+          <li><a href="https://easymap.land.moi.gov.tw/" target="_blank" rel="noopener">地籍圖資網路便民服務系統</a></li>
+        </ul>
+      </details>
+
+      <details class="card">
+        <summary><h2>開放資料下載</h2></summary>
+        <p class="muted">道路與里界資料以 ODbL 授權釋出（來源：OpenStreetMap 貢獻者）。</p>
+        <div class="btn-row wrap">
+          <a class="btn ghost" href="data/roads.geojson" download>道路 GeoJSON</a>
+          <button class="btn ghost" id="roadsCsv">道路清冊 CSV</button>
+          <a class="btn ghost" href="data/villages.geojson" download>里界 GeoJSON</a>
+        </div>
+      </details>
+
+      <button class="btn ghost full" id="printBtn">🖨️ 列印目前地圖</button>
+    </section>
+
+    <!-- ===== 公告 ===== -->
+    <section id="tab-news" class="tab-pane" role="tabpanel">
+      <div id="newsList"><p class="muted">載入中…</p></div>
+    </section>
+  </div>
+
+  <footer class="panel-foot">
+    本系統圖資僅供參考，實際道路權屬與範圍以權管機關現場鑑界為準。<br>
+    底圖：國土測繪中心、Esri、OpenStreetMap｜道路資料：© OpenStreetMap 貢獻者
+  </footer>
+</aside>
+
+<!-- ===== 地圖 ===== -->
+<main id="map" aria-label="地圖"></main>
+
+<div class="fab-stack" aria-label="地圖工具">
+  <button class="fab" id="fabLocate" title="我的位置" aria-label="我的位置">📍</button>
+  <button class="fab" id="fabBase" title="切換底圖" aria-label="切換底圖">🗺️</button>
+  <button class="fab" id="fabHome" title="回到安定區" aria-label="回到安定區全區">🏠</button>
+  <button class="fab accent" id="fabReport" title="我要通報" aria-label="我要通報">📣</button>
+</div>
+
+<div class="base-menu" id="baseMenu" hidden role="menu"></div>
+
+<div class="legend" id="legend" aria-label="圖例"></div>
+
+<div class="info-card" id="infoCard" hidden role="dialog" aria-live="polite"></div>
+
+<div class="map-hint" id="mapHint" hidden></div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- ===== 首次進入導覽 ===== -->
+<div class="welcome" id="welcome" hidden>
+  <div class="welcome-card">
+    <p class="eyebrow">臺南市安定區</p>
+    <h2>公眾通行道路圖資系統</h2>
+    <p class="muted">查詢 13 里農路、產業道路與區道，回報路面問題，追蹤施工進度。</p>
+    <div class="welcome-grid">
+      <button data-go="roads"><span>🛣️</span><b>查道路</b><small>路名、里別、長度</small></button>
+      <button data-go="report"><span>📣</span><b>我要通報</b><small>坑洞、坍方、路樹</small></button>
+      <button data-go="cases"><span>🚧</span><b>看施工</b><small>維修案件公開</small></button>
+      <button data-go="tools"><span>🧭</span><b>工具</b><small>座標、半徑、量測</small></button>
+    </div>
+    <label class="small muted"><input type="checkbox" id="welcomeSkip"> 下次不再顯示</label>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

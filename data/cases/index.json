@@ -1,0 +1,4 @@
+{
+  "note": "施工／維修案件清單。每個 file 為一個 GeoJSON（Point），格式見 data/cases/README.md。",
+  "groups": []
+}

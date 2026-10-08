@@ -1,0 +1,1 @@
+[out:json][timeout:250];(way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street|track|service|road)$"](23.060,120.180,23.140,120.275););out geom tags;

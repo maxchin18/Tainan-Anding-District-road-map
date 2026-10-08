@@ -1,0 +1,14 @@
+{
+  "name": "臺南市安定區公眾通行道路圖資系統",
+  "short_name": "安定道路圖資",
+  "description": "臺南市安定區公眾通行道路查詢、道路通報與維修案件公開地圖",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FBF6EC",
+  "theme_color": "#1C5FC4",
+  "lang": "zh-TW",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

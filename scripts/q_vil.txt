@@ -1,0 +1,1 @@
+[out:json][timeout:250];(rel(2222077);rel["boundary"="administrative"]["admin_level"="9"](23.060,120.180,23.140,120.275););out geom;
