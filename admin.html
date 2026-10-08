@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>通報管理後台｜安定區道路圖資</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin">
+
+<!-- ===== 登入 ===== -->
+<section id="loginView" class="login-wrap">
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <p class="eyebrow">臺南市安定區公所</p>
+    <h1>通報管理後台</h1>
+    <p class="muted">僅限授權人員使用。登入後可檢視民眾通報內容、照片並更新處理狀態。</p>
+    <label class="field">帳號<input id="user" name="username" autocomplete="username" required maxlength="32" autocapitalize="off" spellcheck="false"></label>
+    <label class="field">密碼<input id="pwd" name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+    <button class="btn primary full" id="loginBtn" type="submit">登入</button>
+    <p class="login-msg" id="loginMsg" role="alert"></p>
+    <p class="small muted">連續輸錯 5 次將暫停登入 15 分鐘。登入有效 8 小時，關閉分頁即登出。</p>
+    <a class="small" href="./">← 回到道路圖資系統</a>
+  </form>
+</section>
+
+<!-- ===== 後台 ===== -->
+<section id="appView" hidden>
+  <header class="topbar">
+    <div class="tb-brand"><span class="eyebrow">安定區</span><b>通報管理後台</b></div>
+    <nav class="tb-tabs" role="tablist">
+      <button role="tab" data-view="cases" aria-selected="true">案件</button>
+      <button role="tab" data-view="log" id="logTabBtn" hidden>操作紀錄</button>
+    </nav>
+    <div class="tb-user">
+      <span class="role-badge" id="roleBadge"></span>
+      <span id="userName"></span>
+      <span class="small muted" id="expireHint"></span>
+      <button class="btn ghost sm" id="refreshBtn" title="重新整理">↻</button>
+      <button class="btn ghost sm" id="logoutBtn">登出</button>
+    </div>
+  </header>
+
+  <main class="admin-grid" id="casesView">
+    <div class="admin-left">
+      <div class="kpis" id="kpis"></div>
+      <div class="filters">
+        <input type="search" id="fq" placeholder="搜尋案號、說明、道路、聯絡方式…" aria-label="搜尋">
+        <div class="filter-row">
+          <select id="fType" aria-label="類別"><option value="">全部類別</option></select>
+          <select id="fVillage" aria-label="里別"><option value="">全部里別</option></select>
+        </div>
+        <div class="filter-row">
+          <label>從 <input type="date" id="fFrom"></label>
+          <label>到 <input type="date" id="fTo"></label>
+        </div>
+        <div class="filter-row end">
+          <span class="small muted" id="resultCount"></span>
+          <button class="btn ghost sm" id="exportBtn" hidden>匯出 CSV</button>
+        </div>
+      </div>
+      <ul class="case-list" id="caseList"></ul>
+    </div>
+    <div class="admin-map-wrap">
+      <div id="adminMap"></div>
+      <aside class="detail" id="detail" hidden aria-live="polite"></aside>
+    </div>
+  </main>
+
+  <main id="logView" class="log-view" hidden>
+    <div class="card">
+      <h2>操作紀錄（最近 200 筆）</h2>
+      <div class="table-wrap"><table class="log-table"><thead><tr><th>時間</th><th>帳號</th><th>動作</th><th>內容</th></tr></thead><tbody id="logBody"></tbody></table></div>
+    </div>
+  </main>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+<script src="js/config.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

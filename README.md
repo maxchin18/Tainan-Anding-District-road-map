@@ -12,6 +12,7 @@
 | 📣 通報 | 四步驟：照片（自動讀取 GPS）→ 位置（GPS／點地圖／可拖曳微調）→ 狀況類別 → 送出 |
 | 🧭 工具 | TWD97／WGS84 座標批次定位＋半徑圈（登革熱孳生源查詢）、點地圖查座標與鄰近道路、距離量測、地籍圖疊加、開放資料下載、列印 |
 | 📰 公告 | 讀取 `data/news.json` |
+| 🔐 管理後台 | `admin.html`：帳號登入、三種角色權限（檢視者／承辦人／管理者），檢視通報內容與照片、更新處理狀態、匯出、操作紀錄 |
 
 ---
 
@@ -32,7 +33,8 @@
 | 參考網站的問題 | 安定區版的做法 |
 |---|---|
 | 單一 480 KB HTML，樣式大量 `!important`，難維護 | 拆成 `index.html`／`css`／`js`／`data`，設定集中在 `js/config.js` |
-| 後端金鑰 `appKey` 寫在前端、密碼放在網址參數 | 前端不放任何密鑰；後端以白名單、範圍與大小限制過濾（見 `gas/`） |
+| 後端金鑰 `appKey` 寫在前端、密碼放在網址參數 | 前端不放任何密鑰；密碼以 POST 傳送，後端加鹽雜湊驗證、簽章權杖、錯誤鎖定、角色權限（見 `gas/`） |
+| 公開清單含民眾描述，個資界線不清 | 公開看板只顯示類別／位置／狀態；說明、照片、聯絡方式僅後台登入者可見，檢視者另遮罩聯絡方式 |
 | 每次開啟都載入 TensorFlow（約 1 MB 以上），手機很慢 | 只載入 Leaflet、proj4、exifr-lite，首頁輕量 |
 | CDN 未鎖版本（`unpkg.com/leaflet`），哪天更新就可能壞掉 | 所有套件鎖定版本 |
 | 道路選單是 100 多項的下拉清單，難找 | 即時搜尋＋關鍵字高亮、依等級晶片與里別篩選、依長度／名稱排序 |
@@ -74,8 +76,9 @@ data/boundary.geojson 區界
 data/cases/           施工／維修案件（格式見該資料夾 README）
 data/news.json        公告
 data/raw/             OSM 原始資料
-gas/                  通報後端（Google Apps Script）
-scripts/              資料處理腳本
+admin.html            管理後台（js/admin.js、css/admin.css）
+gas/                  通報與後台 API（Google Apps Script）＋部署說明
+scripts/              資料處理腳本、本機模擬後端 dev_server.py
 ```
 
 ### 更新道路圖資
@@ -98,10 +101,12 @@ python scripts/cases_csv_to_geojson.py 115養護.csv --year 115 --label "115年�
 
 編輯 `data/news.json`，加一筆 `{ "date": "2026-10-08", "title": "…", "body": "…" }`。
 
-### 啟用民眾通報後端
+### 啟用民眾通報與管理後台
 
-依 [`gas/README.md`](gas/README.md) 部署 Apps Script，把網址填入 `js/config.js` 的 `reportEndpoint`。
-未設定時，通報會暫存在使用者手機並產生可列印的通報單。
+依 [`gas/README.md`](gas/README.md) 部署 Apps Script、建立帳號，把網址填入 `js/config.js` 的 `reportEndpoint`。
+未設定時，通報會暫存在使用者手機並產生可列印的通報單，後台無法登入。
+
+本機可用模擬後端測試完整流程：`python scripts/dev_server.py`（說明見 gas/README.md）。
 
 ### 本機預覽
 

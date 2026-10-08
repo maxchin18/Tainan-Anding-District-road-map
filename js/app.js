@@ -41,10 +41,10 @@ const BASES = {
   emap:  { name: '通用版電子地圖', icon: '🗺️', layer: L.tileLayer(NLSC('EMAP'), { maxZoom: 19, maxNativeZoom: 18, className: 'tile-warm', attribution: '© 國土測繪中心' }) },
   gray:  { name: '淺灰簡圖', icon: '🧾', layer: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 16, className: 'tile-warm', attribution: 'Tiles © Esri' }) },
   photo: { name: '正射影像', icon: '🛰️', layer: L.tileLayer(NLSC('PHOTO2'), { maxZoom: 19, maxNativeZoom: 19, attribution: '© 國土測繪中心' }) },
-  osm:   { name: 'OpenStreetMap', icon: '🌐', layer: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap 貢獻者' }) },
 };
 const OVERLAYS = {
-  land: { name: '地籍圖（段籍）', layer: L.tileLayer(NLSC('LANDSECT'), { maxZoom: 19, maxNativeZoom: 19, opacity: .8, minZoom: 15 }) },
+  land: { name: '地籍圖（公開地籍）', layer: L.tileLayer(NLSC('LAND_OPENDATA'), { maxZoom: 19, maxNativeZoom: 19, opacity: .85, minZoom: 16, attribution: '地籍：國土測繪中心' }) },
+  sect: { name: '地段界', layer: L.tileLayer(NLSC('LANDSECT'), { maxZoom: 19, maxNativeZoom: 19, opacity: .8, minZoom: 13 }) },
   villages: { name: '里界與里名', layer: null },
 };
 let baseKey = store.get('ad.base', 'emap');
@@ -68,7 +68,7 @@ function buildBaseMenu() {
     const o = OVERLAYS[cb.dataset.ov];
     if (!o.layer) return;
     cb.checked ? o.layer.addTo(map) : map.removeLayer(o.layer);
-    if (cb.dataset.ov === 'land' && cb.checked && map.getZoom() < 15) toast('地籍圖需放大至 15 級以上才會顯示');
+    if (cb.dataset.ov === 'land' && cb.checked && map.getZoom() < 16) toast('地籍圖需放大至街道層級才會顯示');
   });
 }
 $('#fabBase').onclick = e => { e.stopPropagation(); const m = $('#baseMenu'); m.hidden = !m.hidden; if (!m.hidden) buildBaseMenu(); };
@@ -465,13 +465,17 @@ $('#liveToggle').onchange = async e => {
   if (!e.target.checked) return;
   let items = store.get('ad.reports', []).map(r => ({ ...r, status: r.status || '本機暫存' }));
   if (C.reportEndpoint) {
-    try { const r = await getJSON(`${C.reportEndpoint}?action=list`); items = (r.items || []).concat(items); }
+    try {
+      const r = await getJSON(`${C.reportEndpoint}?action=list`);
+      const ids = new Set((r.items || []).map(i => i.id));
+      items = (r.items || []).concat(items.filter(i => !ids.has(i.id)));
+    }
     catch { toast('通報看板讀取失敗，僅顯示本機資料'); }
   }
   const col = s => /完成|完工|結案/.test(s) ? '#2E9E4F' : /處理|派工|施工/.test(s) ? '#F39200' : '#E3001B';
   liveLayer = L.layerGroup(items.filter(i => i.lat && i.lng).map(i => L.marker([i.lat, i.lng], {
     icon: L.divIcon({ className: 'pin-icon', html: `<span style="background:${col(i.status)}"></span>`, iconSize: [24, 24] }),
-  }).bindPopup(`<h4>${esc(i.type)}</h4>${esc(i.desc || '')}<br><small>${esc(fmtTime(i.time))}・${esc(i.status)}</small>`))).addTo(map);
+  }).bindPopup(`<h4>${esc(i.type)}・${esc(i.status)}</h4>${esc(i.village || '')}${i.road ? `・${esc(i.road)}` : ''}<br><small>${esc(fmtTime(i.time))}</small>${i.reply ? `<br><b>公所回覆：</b>${esc(i.reply)}` : ''}`))).addTo(map);
   toast(`顯示 ${items.length} 筆通報`);
 };
 
@@ -755,6 +759,7 @@ getJSON('data/news.json').then(list => {
 }).catch(() => { $('#newsList').innerHTML = '<p class="muted">公告載入失敗</p>'; });
 
 /* ---------------- 網址導向與首次導覽 ---------------- */
+addEventListener('hashchange', () => { if (S.roads.length) routeFromHash(); });
 function routeFromHash() {
   const h = decodeURIComponent(location.hash.slice(1));
   if (h.startsWith('road=')) { const f = S.roads.find(r => r.properties.id === h.slice(5)); if (f) return selectRoad(f); }
