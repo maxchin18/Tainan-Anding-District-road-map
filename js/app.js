@@ -157,7 +157,7 @@ Promise.all([getJSON('data/boundary.geojson'), getJSON('data/villages.geojson'),
     S.boundary = b; S.villages = v; S.roads = r.features;
     drawBoundary(); drawVillages(); drawRoads();
     buildFilters(); renderStats(); renderList(); renderVillageStats(); renderLegend();
-    routeFromHash();
+    if (!location.hash.startsWith('#case=')) routeFromHash();
   })
   .catch(err => { console.error(err); toast('圖資載入失敗，請重新整理'); });
 
@@ -458,25 +458,33 @@ $('#caseCsv').onclick = () => {
 };
 
 /* 民眾通報看板（需設定後端） */
-let liveLayer = null;
-$('#liveHint').textContent = C.reportEndpoint ? '資料來源：公所通報系統（個資不公開）' : '尚未連接公所通報後端；目前僅顯示您在本機暫存的通報。';
+let liveLayer = null, liveItems = [];
+$('#liveHint').textContent = C.reportEndpoint ? '資料來源：公所通報系統（個資不公開）。點選標記可看案件進度、施工前後照片與留言。' : '尚未連接公所通報後端；目前僅顯示您在本機暫存的通報。';
+async function loadLive() {
+  let items = store.get('ad.reports', []).filter(r => r.status === '本機暫存');
+  if (C.reportEndpoint) {
+    try { const r = await AD.apiGet({ action: 'list' }); items = (r.items || []).concat(items); }
+    catch { toast('通報看板讀取失敗，僅顯示本機資料'); }
+  }
+  return (liveItems = items);
+}
 $('#liveToggle').onchange = async e => {
   if (liveLayer) { map.removeLayer(liveLayer); liveLayer = null; }
   if (!e.target.checked) return;
-  let items = store.get('ad.reports', []).map(r => ({ ...r, status: r.status || '本機暫存' }));
-  if (C.reportEndpoint) {
-    try {
-      const r = await getJSON(`${C.reportEndpoint}?action=list`);
-      const ids = new Set((r.items || []).map(i => i.id));
-      items = (r.items || []).concat(items.filter(i => !ids.has(i.id)));
-    }
-    catch { toast('通報看板讀取失敗，僅顯示本機資料'); }
-  }
-  const col = s => /完成|完工|結案/.test(s) ? '#2E9E4F' : /處理|派工|施工/.test(s) ? '#F39200' : '#E3001B';
+  const items = await loadLive();
   liveLayer = L.layerGroup(items.filter(i => i.lat && i.lng).map(i => L.marker([i.lat, i.lng], {
-    icon: L.divIcon({ className: 'pin-icon', html: `<span style="background:${col(i.status)}"></span>`, iconSize: [24, 24] }),
-  }).bindPopup(`<h4>${esc(i.type)}・${esc(i.status)}</h4>${esc(i.village || '')}${i.road ? `・${esc(i.road)}` : ''}<br><small>${esc(fmtTime(i.time))}</small>${i.reply ? `<br><b>公所回覆：</b>${esc(i.reply)}` : ''}`))).addTo(map);
+    icon: L.divIcon({ className: 'pin-icon', html: `<span style="background:${AD.statusColor(i.status)}"></span>`, iconSize: [24, 24] }),
+  }).bindPopup(`<h4>${esc(i.type)}・${esc(i.status)}</h4>${esc(i.village || '')}${i.road ? `・${esc(i.road)}` : ''}<br><small>${esc(i.id)}・${esc(i.date || fmtTime(i.time))}</small>
+    ${i.reply ? `<br><b>公所說明：</b>${esc(i.reply)}` : ''}${String(i.id).startsWith('AD') ? `<br><a href="#case=${esc(i.id)}">查看案件進度 →</a>` : ''}`))).addTo(map);
   toast(`顯示 ${items.length} 筆通報`);
+};
+$('#caseLookup').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) location.hash = 'case=' + e.target.value.trim().toUpperCase(); };
+$('#openDataCsv').onclick = async () => {
+  if (!C.reportEndpoint) return toast('尚未連接公所後端，暫無通報案件資料');
+  try {
+    const r = await AD.apiGet({ action: 'list' });
+    AD.downloadCSV(AD.openDataRows((r.items || []).filter(i => i.status !== '不受理')), `安定區道路案件開放資料_${new Date().toLocaleDateString('sv-SE')}.csv`);
+  } catch { toast('下載失敗，請稍後再試'); }
 };
 
 /* ---------------- 道路通報流程 ---------------- */
@@ -487,46 +495,58 @@ $$('#issueChips .chip').forEach(b => b.onclick = () => {
   $$('#issueChips .chip').forEach(x => x.setAttribute('aria-checked', String(x === b)));
 });
 
+let captcha = null;
 function gotoStep(n) {
   if (n === 3 && !R.latlng) return toast('請先選擇事發位置');
   if (n === 4 && !R.type) return toast('請選擇狀況類別');
+  if (n === 4 && $('#email').value && !$('#email').checkValidity()) return toast('Email 格式不正確');
   R.step = n;
   $$('.step').forEach(s => s.hidden = +s.dataset.step !== n);
   $$('#stepper li').forEach((li, i) => { li.classList.toggle('on', i + 1 === n); li.classList.toggle('done', i + 1 < n); });
   mapPickOn(n === 2);
-  if (n === 4) renderReview();
+  if (n === 4) {
+    renderReview();
+    if (C.reportEndpoint) { if (!captcha) captcha = AD.captchaWidget($('#captchaBox')); else captcha.refresh(); }
+  }
   $('.panel-body').scrollTop = 0;
 }
 $$('[data-next]').forEach(b => b.onclick = () => gotoStep(R.step + 1));
 $$('[data-prev]').forEach(b => b.onclick = () => gotoStep(R.step - 1));
 
+/* 照片：讀取 GPS 後，在裝置端執行 AI 去識別化，只保留處理後影像 */
 $('#photoDrop').onclick = e => { if (e.target.tagName !== 'INPUT') { e.preventDefault(); $('#photoInput').click(); } };
 $('#photoInput').onchange = async e => {
   for (const file of [...e.target.files].slice(0, 3 - R.photos.length)) {
     let gps = null;
     try { const g = await exifr.gps(file); if (g?.latitude) gps = L.latLng(g.latitude, g.longitude); } catch { /* 無 EXIF */ }
-    const data = await shrinkImage(file, 1280);
-    R.photos.push({ data, gps, name: file.name });
+    const res = await Deid.open(file, { title: `照片去識別化（${R.photos.length + 1}/3）` }).catch(() => null);
+    if (!res) continue;
+    R.photos.push({ data: res.dataUrl, gps, summary: res.summary });
     if (gps && !R.latlng) setReportLoc(gps, '照片 GPS');
   }
   e.target.value = '';
   renderThumbs();
 };
 function renderThumbs() {
-  $('#thumbs').innerHTML = R.photos.map((p, i) => `<figure><img src="${p.data}" alt="現場照片 ${i + 1}"><button type="button" data-rm="${i}" aria-label="移除">✕</button>${p.gps ? '<span class="gps">GPS</span>' : ''}</figure>`).join('');
+  $('#thumbs').innerHTML = R.photos.map((p, i) => `<figure><img src="${p.data}" alt="現場照片 ${i + 1}"><button type="button" data-rm="${i}" aria-label="移除">✕</button>
+    <span class="gps">${p.gps ? 'GPS・' : ''}已去識別化</span></figure>`).join('');
   $$('[data-rm]').forEach(b => b.onclick = () => { R.photos.splice(+b.dataset.rm, 1); renderThumbs(); });
 }
-function shrinkImage(file, max) {
-  return new Promise((res, rej) => {
-    const img = new Image(), url = URL.createObjectURL(file);
-    img.onload = () => {
-      const k = Math.min(1, max / Math.max(img.width, img.height));
-      const cv = document.createElement('canvas'); cv.width = img.width * k; cv.height = img.height * k;
-      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-      URL.revokeObjectURL(url); res(cv.toDataURL('image/jpeg', .78));
-    };
-    img.onerror = rej; img.src = url;
-  });
+
+/* 語音／鍵盤雙軌輸入 */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR) {
+  $('#micBtn').hidden = false; $('#micHint').hidden = false;
+  let rec = null;
+  $('#micBtn').onclick = () => {
+    if (rec) { rec.stop(); return; }
+    rec = new SR(); rec.lang = 'zh-TW'; rec.interimResults = true; rec.continuous = false;
+    const ta = $('#issueDesc'), base = ta.value ? ta.value.replace(/\s*$/, '，') : '';
+    rec.onresult = ev => { ta.value = (base + [...ev.results].map(r => r[0].transcript).join('')).slice(0, 500); };
+    rec.onerror = ev => toast(ev.error === 'not-allowed' ? '請允許使用麥克風' : '語音辨識失敗，請改用鍵盤輸入');
+    rec.onend = () => { rec = null; $('#micBtn').classList.remove('on'); };
+    rec.start(); $('#micBtn').classList.add('on'); toast('請開始說話…');
+  };
 }
 
 let reportMarker = null;
@@ -542,6 +562,42 @@ function setReportLoc(latlng, src) {
   box.classList.add('ok');
   box.innerHTML = `✅ <b>${esc(R.village || '安定區外')}</b>${R.near ? `・近 <b>${esc(R.near)}</b>` : ''}<br><small>${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}｜TWD97 ${t[0].toFixed(0)}, ${t[1].toFixed(0)}｜來源：${esc(src)}（可拖曳紅點微調）</small>`;
   if (!R.village) toast('此位置不在安定區範圍內，請確認');
+  checkDuplicates(latlng);
+}
+
+/* 時間及空間雙重演算法警示：3 年內、方圓 50 公尺內是否已有通報或維修 */
+const DUP_M = 50, DUP_MS = 3 * 365.25 * 864e5;
+let dupSeq = 0;
+async function staticCasesNear(latlng) {
+  const idx = await getJSON('data/cases/index.json').catch(() => ({ groups: [] }));
+  const out = [];
+  for (const g of idx.groups || []) for (const it of g.items) {
+    if (!caseData[it.file]) caseData[it.file] = await getJSON('data/cases/' + it.file).catch(() => ({ features: [] }));
+    caseData[it.file].features.forEach(f => {
+      const p = f.properties, [x, y] = f.geometry.coordinates, d = map.distance(latlng, [y, x]);
+      const when = Date.parse(p.finishDate || p.dispatchDate);
+      if (d <= DUP_M && (isNaN(when) || Date.now() - when <= DUP_MS)) out.push({ id: p.title || it.label, date: p.finishDate || p.dispatchDate, status: '維修紀錄', type: p.type || it.label, dist: Math.round(d) });
+    });
+  }
+  return out;
+}
+async function findNearby(latlng, exclude) {
+  const [api, hist] = await Promise.all([
+    C.reportEndpoint ? AD.apiGet({ action: 'nearby', lat: latlng.lat, lng: latlng.lng, exclude: exclude || '' }).then(r => r.items || []).catch(() => []) : [],
+    staticCasesNear(latlng),
+  ]);
+  return api.concat(hist).sort((a, b) => a.dist - b.dist);
+}
+async function checkDuplicates(latlng) {
+  const seq = ++dupSeq, box = $('#dupBox');
+  const list = await findNearby(latlng);
+  if (seq !== dupSeq) return;
+  R.nearby = list;
+  box.hidden = !list.length;
+  if (!list.length) return;
+  box.innerHTML = `<b>⚠️ 此位置 3 年內、方圓 50 公尺內已有 ${list.length} 件案件</b>
+    <ul>${list.slice(0, 5).map(i => `<li>${String(i.id).startsWith('AD') ? `<a href="#case=${esc(i.id)}">${esc(i.id)}</a>` : esc(i.id)}｜${esc(i.type)}｜${esc(i.date)}｜${esc(i.status)}｜${i.dist} m</li>`).join('')}</ul>
+    <small>若是同一個問題，可直接到該案件留言追蹤，避免重複通報；若是新的損壞，仍可繼續通報。</small>`;
 }
 function mapPickOn(on) {
   const reportVisible = $('#tab-report').classList.contains('active');
@@ -554,6 +610,7 @@ $('#useGps').onclick = () => locate(ll => { setReportLoc(ll, '裝置定位'); ma
 
 function startReport(latlng, roadName) {
   openTab('report');
+  $('#reportDone').hidden = true; $('#reportForm').hidden = false; $('#stepper').hidden = false;
   if (latlng) setReportLoc(latlng, roadName ? `道路「${roadName}」` : '地圖');
   gotoStep(latlng ? 3 : 1);
   if (isMobile()) setSheet('full');
@@ -565,9 +622,10 @@ function renderReview() {
     <dt>類別</dt><dd>${esc(R.type)}</dd>
     <dt>位置</dt><dd>${esc(R.village)}${R.near ? `・${esc(R.near)}` : ''}<br><small>${R.latlng.lat.toFixed(6)}, ${R.latlng.lng.toFixed(6)}</small></dd>
     <dt>說明</dt><dd>${esc($('#issueDesc').value || '（未填）')}</dd>
-    <dt>照片</dt><dd>${R.photos.length} 張</dd>
-    <dt>聯絡</dt><dd>${$('#contact').value ? '已填寫（不公開）' : '未填'}</dd></dl>`;
-  $('#submitNote').textContent = C.reportEndpoint ? '送出後由公所承辦人員受理，處理進度可於「施工」頁的通報看板查看。' : '目前尚未連接公所後端：送出後會暫存於本機，並可下載通報單轉交公所。';
+    <dt>照片</dt><dd>${R.photos.length} 張（已去識別化）</dd>
+    <dt>通知</dt><dd>${$('#email').value ? 'Email ' : ''}${C.lineOaId ? 'LINE（送出後綁定）' : ''}${!$('#email').value && !C.lineOaId ? '不通知' : ''}</dd>
+    ${R.nearby?.length ? `<dt>提醒</dt><dd style="color:#B45309">附近已有 ${R.nearby.length} 件案件</dd>` : ''}</dl>`;
+  $('#submitNote').textContent = C.reportEndpoint ? '送出後系統自動立案並給號，處理進度會以 Email／LINE 通知，也可在案件頁查詢。' : '目前尚未連接公所後端：送出後會暫存於本機，並可下載通報單轉交公所。';
 }
 
 $('#reportForm').onsubmit = async e => {
@@ -578,33 +636,65 @@ $('#reportForm').onsubmit = async e => {
     time: new Date().toISOString(), type: R.type, desc: $('#issueDesc').value.trim(),
     lat: +R.latlng.lat.toFixed(6), lng: +R.latlng.lng.toFixed(6), village: R.village, road: R.near,
   };
-  const btn = $('#submitReport'); btn.disabled = true; btn.textContent = '送出中…';
-  let sent = false;
+  const btn = $('#submitReport');
   if (C.reportEndpoint) {
+    const cap = captcha.get();
+    if (!/^\d{4}$/.test(cap.answer)) return toast('請輸入驗證碼（4 個數字）');
+    btn.disabled = true; btn.textContent = '送出中…';
     try {
-      // Apps Script 不支援 CORS 預檢，使用 text/plain 簡單請求
-      const r = await fetch(C.reportEndpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'report', ...rec, contact: $('#contact').value.trim(), photos: R.photos.map(p => p.data) }) });
-      const j = await r.json(); sent = !!j.ok; if (j.id) rec.id = j.id;
-    } catch (err) { console.error(err); }
+      const j = await AD.apiPost('report', { ...rec, contact: $('#contact').value.trim(), email: $('#email').value.trim(), photos: R.photos.map(p => p.data), ...cap });
+      if (!j.ok) { toast(j.error || '送出失敗'); captcha.refresh(); return; }
+      const mine = store.get('ad.reports', []);
+      mine.unshift({ ...rec, id: j.id, key: j.key, status: '已立案' });
+      store.set('ad.reports', mine.slice(0, 30));
+      showDone(j);
+      resetReport(); renderMyReports();
+    } catch (err) {
+      console.error(err);
+      toast('網路異常，已暫存於本機並開啟通報單', 3500);
+      saveLocal(rec);
+    } finally { btn.disabled = false; btn.textContent = '🚀 送出通報'; }
+    return;
   }
-  const mine = store.get('ad.reports', []);
-  mine.unshift({ ...rec, status: sent ? '已送出' : '本機暫存' });
-  store.set('ad.reports', mine.slice(0, 30));
-  btn.disabled = false; btn.textContent = '🚀 送出通報';
-  if (sent) toast(`通報成功！案號 ${rec.id}`, 4000);
-  else {
-    toast(C.reportEndpoint ? '網路異常，已暫存於本機' : '已暫存，正在開啟通報單…', 3500);
-    printReportSheet(rec);
-  }
-  resetReport(); renderMyReports();
+  toast('已暫存，正在開啟通報單…', 3500);
+  saveLocal(rec);
 };
+function saveLocal(rec) {
+  const mine = store.get('ad.reports', []);
+  mine.unshift({ ...rec, status: '本機暫存' });
+  store.set('ad.reports', mine.slice(0, 30));
+  printReportSheet(rec);
+  resetReport(); renderMyReports();
+}
+function lineLink(id, key) {
+  return `https://line.me/R/oaMessage/${encodeURIComponent(C.lineOaId)}/?${encodeURIComponent(`追蹤 ${id} ${key}`)}`;
+}
+function showDone(j) {
+  $('#reportForm').hidden = true; $('#stepper').hidden = true;
+  const box = $('#reportDone');
+  box.hidden = false;
+  box.innerHTML = `<div class="done-badge">✔</div><h2>通報成功，系統已自動立案</h2>
+    <dl class="done-dl"><dt>案號</dt><dd><b>${esc(j.id)}</b></dd><dt>查詢碼</dt><dd><b class="code">${esc(j.key)}</b></dd></dl>
+    <p class="small muted">請保存查詢碼：完工後可用來評分，也可用來綁定 LINE 通知。本機已自動記住。</p>
+    ${j.nearby?.length ? `<p class="small" style="color:#B45309">系統比對到附近 3 年內有 ${j.nearby.length} 件案件，公所派工前會辦理會勘確認。</p>` : ''}
+    <div class="btn-row wrap">
+      ${C.lineOaId ? `<a class="btn line" href="${lineLink(j.id, j.key)}" target="_blank" rel="noopener">LINE 接收進度</a>` : ''}
+      <a class="btn" href="#case=${esc(j.id)}">查看案件頁</a>
+      <button class="btn ghost" type="button" id="newReport">再通報一件</button>
+    </div>`;
+  $('#newReport').onclick = () => startReport(null);
+  $('.panel-body').scrollTop = 0;
+}
 function resetReport() {
-  R.photos = []; R.latlng = null; R.type = ''; renderThumbs();
-  $('#issueDesc').value = ''; $('#contact').value = '';
-  $('#locBox').className = 'loc-box'; $('#locBox').textContent = '尚未選擇位置';
+  R.photos = []; R.latlng = null; R.type = ''; R.nearby = []; renderThumbs();
+  $('#issueDesc').value = ''; $('#contact').value = ''; $('#email').value = '';
+  $('#locBox').className = 'loc-box'; $('#locBox').textContent = '尚未選擇位置'; $('#dupBox').hidden = true;
   $$('#issueChips .chip').forEach(x => x.setAttribute('aria-checked', 'false'));
   if (reportMarker) { map.removeLayer(reportMarker); reportMarker = null; }
-  gotoStep(1);
+  R.step = 1;
+  $$('.step').forEach(s => s.hidden = +s.dataset.step !== 1);
+  $$('#stepper li').forEach((li, i) => { li.classList.toggle('on', i === 0); li.classList.remove('done'); });
+  mapPickOn(false);
 }
 function printReportSheet(rec) {
   const w = window.open('', '_blank');
@@ -614,7 +704,7 @@ function printReportSheet(rec) {
   <style>body{font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;padding:28px;color:#1B2A4A}h1{color:#1C5FC4;border-bottom:4px solid #E3001B;padding-bottom:6px}
   table{border-collapse:collapse;width:100%}td,th{border:1.5px solid #1B2A4A;padding:8px;text-align:left;vertical-align:top}th{width:110px;background:#FBF6EC}img{max-width:48%;margin:4px;border:1px solid #ccc}</style>
   <h1>${esc(C.district)} 道路狀況通報單</h1>
-  <table><tr><th>案號</th><td>${rec.id}</td></tr><tr><th>通報時間</th><td>${new Date(rec.time).toLocaleString('zh-TW')}</td></tr>
+  <table><tr><th>暫存編號</th><td>${rec.id}</td></tr><tr><th>通報時間</th><td>${new Date(rec.time).toLocaleString('zh-TW')}</td></tr>
   <tr><th>類別</th><td>${esc(rec.type)}</td></tr><tr><th>里別／道路</th><td>${esc(rec.village)} ${esc(rec.road)}</td></tr>
   <tr><th>座標</th><td>WGS84 ${rec.lat}, ${rec.lng}<br>TWD97 ${t[0].toFixed(0)}, ${t[1].toFixed(0)}<br><a href="https://www.google.com/maps?q=${rec.lat},${rec.lng}">Google 地圖</a></td></tr>
   <tr><th>說明</th><td>${esc(rec.desc) || '—'}</td></tr></table>
@@ -626,10 +716,107 @@ function printReportSheet(rec) {
 function renderMyReports() {
   const mine = store.get('ad.reports', []);
   $('#myReportsCard').hidden = !mine.length;
-  $('#myReports').innerHTML = mine.map(r => `<li data-ll="${r.lat},${r.lng}"><span>${esc(r.type)}・${esc(r.village || '')}<br><small class="muted">${fmtTime(r.time)}</small></span><span class="tag" style="color:${r.status === '已送出' ? '#2E9E4F' : '#F39200'}">${esc(r.status)}</span></li>`).join('');
-  $$('#myReports li').forEach(li => li.onclick = () => { const [a, b] = li.dataset.ll.split(',').map(Number); map.flyTo([a, b], 17); });
+  $('#myReports').innerHTML = mine.map(r => `<li data-id="${esc(r.id)}" data-ll="${r.lat},${r.lng}"><span>${esc(r.id)}・${esc(r.type)}・${esc(r.village || '')}<br><small class="muted">${fmtTime(r.time)}</small></span>
+    <span class="tag" style="color:${r.status === '本機暫存' ? '#F39200' : '#2E9E4F'}">${esc(r.status === '本機暫存' ? r.status : '查看進度')}</span></li>`).join('');
+  $$('#myReports li').forEach(li => li.onclick = () => {
+    if (li.dataset.id.startsWith('AD')) location.hash = 'case=' + li.dataset.id;
+    else { const [a, b] = li.dataset.ll.split(',').map(Number); map.flyTo([a, b], 17); }
+  });
 }
 renderMyReports();
+
+/* ---------------- 案件頁：進度、施工前中後照片、評分、留言 ---------------- */
+const STEPS = ['已立案', '已派工', '已完工', '已驗收'];
+let caseCaptcha = null;
+async function openCase(id) {
+  const modal = $('#caseModal'), sheet = $('#caseSheet');
+  modal.hidden = false;
+  sheet.innerHTML = '<p class="muted" style="padding:20px">載入中…</p>';
+  if (!C.reportEndpoint) { sheet.innerHTML = '<p style="padding:20px">尚未連接公所後端，無法查詢案件。</p><button class="btn" data-close>關閉</button>'; bindClose(); return; }
+  let j;
+  try { j = await AD.apiGet({ action: 'case', id }); } catch { j = { ok: false, error: '網路異常' }; }
+  if (!j.ok) { sheet.innerHTML = `<div class="case-head" style="background:#8C96A8"><h3>${esc(id)}</h3><button class="info-close" data-close aria-label="關閉">✕</button></div><p style="padding:16px">${esc(j.error || '查無此案件')}</p>`; bindClose(); return; }
+  const i = j.item, st = AD.STATUS[i.status] || { step: 0 };
+  const mine = store.get('ad.reports', []).find(r => r.id === i.id);
+  const key = mine?.key || new URLSearchParams(location.hash.split('&').slice(1).join('&')).get('k') || '';
+  const t = toTWD97(i.lat, i.lng);
+  const dates = { '已立案': i.date, '已派工': i.dispatchDate, '已完工': i.finishDate, '已驗收': i.acceptDate };
+  const kinds = ['before', 'during', 'after'].filter(k => i.photos[k]);
+  sheet.innerHTML = `
+    <div class="case-head" style="background:${AD.statusColor(i.status)}"><span class="cls">${esc(i.status)}</span><h3>${esc(i.type)}</h3><small>${esc(i.id)}</small>
+      <button class="info-close" data-close aria-label="關閉">✕</button></div>
+    <div class="case-body">
+      ${i.status === '不受理' ? '' : `<ol class="timeline">${STEPS.map((s, n) => `<li class="${n + 1 <= st.step ? 'done' : ''}"><b>${s}</b><small>${esc(AD.rocDate(dates[s]) || '')}</small></li>`).join('')}</ol>`}
+      <dl class="case-dl">
+        <dt>位置</dt><dd>${esc(i.village || '')}${i.road ? `・${esc(i.road)}` : ''}<br><small>WGS84 ${esc(i.lat)}, ${esc(i.lng)}｜TWD97 ${t[0].toFixed(0)}, ${t[1].toFixed(0)}</small></dd>
+        ${i.vendor ? `<dt>施工廠商</dt><dd>${esc(i.vendor)}</dd>` : ''}
+        ${i.amount !== '' && i.amount != null ? `<dt>決標金額</dt><dd>${Number(i.amount).toLocaleString()} 元</dd>` : ''}
+        ${i.reply ? `<dt>公所說明</dt><dd>${esc(i.reply)}</dd>` : ''}
+      </dl>
+      ${kinds.length ? `<h4>施工照片（全民檢視）</h4><div class="seg photo-kind">${kinds.map((k, n) => `<button type="button" data-k="${k}" class="${n ? '' : 'on'}">${AD.KIND_NAME[k]} ${i.photos[k]}</button>`).join('')}</div><div class="case-photos" id="casePhotos"></div>` : ''}
+      ${i.rating ? `<p class="stars-line"><span class="stars">${'★'.repeat(i.rating)}${'☆'.repeat(5 - i.rating)}</span> 民眾評分${i.ratingText ? `：${esc(i.ratingText)}` : ''}</p>` : ''}
+      ${key && ['已完工', '已驗收'].includes(i.status) ? `<form class="rate-form" id="rateForm"><h4>為這次處理評分</h4>
+        <div class="star-input" role="radiogroup" aria-label="評分">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-s="${n}" aria-label="${n} 星">★</button>`).join('')}</div>
+        <input id="rateText" maxlength="200" placeholder="想對公所說的話（選填）"><button class="btn primary" type="submit">送出評分</button></form>` : ''}
+      <h4>案件留言板</h4>
+      <ul class="comments">${i.comments.length ? i.comments.map(c => `<li class="${c.role === '公所' ? 'staff' : ''}"><b>${esc(c.name)}</b><small>${fmtTime(c.time)}</small><p>${esc(c.text)}</p></li>`).join('') : '<li class="muted">尚無留言</li>'}</ul>
+      <form class="comment-form" id="commentForm">
+        <input id="cName" maxlength="20" placeholder="暱稱（選填）"><textarea id="cText" rows="2" maxlength="300" placeholder="留言（公所會收到通知）" required></textarea>
+        <div id="cCaptcha"></div><button class="btn primary" type="submit">送出留言</button></form>
+      <div class="btn-row wrap">
+        <a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${Number(i.lat)},${Number(i.lng)}" target="_blank" rel="noopener">🧭 導航</a>
+        <button class="btn" type="button" data-loc>📍 地圖定位</button>
+        ${key && C.lineOaId ? `<a class="btn line" href="${lineLink(i.id, key)}" target="_blank" rel="noopener">LINE 接收進度</a>` : ''}
+      </div>
+    </div>`;
+  bindClose();
+  $('[data-loc]', sheet).onclick = () => { modal.hidden = true; map.flyTo([i.lat, i.lng], 18); };
+  // 施工照片（延遲載入）
+  const showKind = async k => {
+    $$('.photo-kind button', sheet).forEach(b => b.classList.toggle('on', b.dataset.k === k));
+    const box = $('#casePhotos'); box.innerHTML = Array.from({ length: i.photos[k] }, (_, n) => `<figure data-n="${n}"><span class="muted small">載入中…</span></figure>`).join('');
+    for (let n = 0; n < i.photos[k]; n++) {
+      AD.apiGet({ action: 'photo', id: i.id, kind: k, n }).then(p => {
+        const fig = box.querySelector(`[data-n="${n}"]`); if (!fig || !p.ok) return;
+        fig.innerHTML = `<img src="${p.data}" alt="${AD.KIND_NAME[k]} ${n + 1}"><figcaption>指紋 ${esc(p.sha.slice(0, 12))}</figcaption>`;
+        fig.onclick = () => { const lb = document.createElement('div'); lb.className = 'lightbox'; lb.innerHTML = `<img src="${p.data}" alt="">`; lb.onclick = () => lb.remove(); document.body.appendChild(lb); };
+      });
+    }
+  };
+  $$('.photo-kind button', sheet).forEach(b => b.onclick = () => showKind(b.dataset.k));
+  if (kinds.length) showKind(kinds[0]);
+  // 評分
+  const rf = $('#rateForm');
+  if (rf) {
+    let stars = 0;
+    $$('.star-input button', rf).forEach(b => b.onclick = () => { stars = +b.dataset.s; $$('.star-input button', rf).forEach(x => x.classList.toggle('on', +x.dataset.s <= stars)); });
+    rf.onsubmit = async ev => {
+      ev.preventDefault();
+      if (!stars) return toast('請選擇星等');
+      const r = await AD.apiPost('rate', { id: i.id, key, stars, text: $('#rateText').value.trim() }).catch(() => ({ ok: false, error: '網路異常' }));
+      if (!r.ok) return toast(r.error || '評分失敗');
+      toast('感謝您的評分！'); openCase(i.id);
+    };
+  }
+  // 留言
+  caseCaptcha = AD.captchaWidget($('#cCaptcha'));
+  $('#commentForm').onsubmit = async ev => {
+    ev.preventDefault();
+    const cap = caseCaptcha.get();
+    if (!/^\d{4}$/.test(cap.answer)) return toast('請輸入驗證碼（4 個數字）');
+    const r = await AD.apiPost('comment', { id: i.id, name: $('#cName').value.trim(), text: $('#cText').value.trim(), ...cap }).catch(() => ({ ok: false, error: '網路異常' }));
+    if (!r.ok) { toast(r.error || '留言失敗'); caseCaptcha.refresh(); return; }
+    toast('留言已送出，公所會收到通知'); openCase(i.id);
+  };
+}
+function bindClose() {
+  $$('#caseSheet [data-close]').forEach(b => b.onclick = closeCase);
+}
+function closeCase() {
+  $('#caseModal').hidden = true;
+  if (location.hash.startsWith('#case=')) history.replaceState(null, '', location.pathname + location.search);
+}
+$('#caseModal').onclick = e => { if (e.target.id === 'caseModal') closeCase(); };
 
 /* ---------------- 地圖互動模式（點選位置／點查／量測） ---------------- */
 function setMode(mode, hint) {
@@ -758,26 +945,40 @@ getJSON('data/news.json').then(list => {
   $('#newsList').innerHTML = list.map(n => `<article class="news-item ${n.pin ? 'pin' : ''}"><time>${esc(n.date)}${n.pin ? '・置頂' : ''}</time><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p></article>`).join('') || '<p class="muted">目前沒有公告</p>';
 }).catch(() => { $('#newsList').innerHTML = '<p class="muted">公告載入失敗</p>'; });
 
-/* ---------------- 網址導向與首次導覽 ---------------- */
-addEventListener('hashchange', () => { if (S.roads.length) routeFromHash(); });
+/* ---------------- 網址導向、雙模式入口分流 ---------------- */
+addEventListener('hashchange', () => routeFromHash());
 function routeFromHash() {
   const h = decodeURIComponent(location.hash.slice(1));
+  if (h.startsWith('case=')) return openCase(h.slice(5).split('&')[0].toUpperCase());
+  if (!S.roads.length) return;
   if (h.startsWith('road=')) { const f = S.roads.find(r => r.properties.id === h.slice(5)); if (f) return selectRoad(f); }
   if (['roads', 'cases', 'report', 'tools', 'news'].includes(h)) return openTab(h, { expand: false });
   if (S.homeBounds) map.fitBounds(S.homeBounds, { padding: [10, 10] });
 }
+if (location.hash.startsWith('#case=')) routeFromHash();
 
-if (!store.get('ad.skipWelcome', false) && !location.hash) {
+/** 輕量版：只保留「通報」流程，介面最精簡，適合長輩與現場快速通報 */
+function enterLite() {
+  document.body.classList.add('lite');
+  startReport(null);
+  if (isMobile()) setSheet('full');
+}
+if (new URLSearchParams(location.search).get('mode') === 'lite') enterLite();
+else if (!store.get('ad.skipWelcome', false) && !location.hash) {
   $('#welcome').hidden = false;
-  $$('#welcome [data-go]').forEach(b => b.onclick = () => {
+  $$('#welcome [data-mode]').forEach(b => b.onclick = () => {
     if ($('#welcomeSkip').checked) store.set('ad.skipWelcome', true);
     $('#welcome').hidden = true;
-    b.dataset.go === 'report' ? startReport(null) : openTab(b.dataset.go);
+    if (b.dataset.mode === 'lite') { history.replaceState(null, '', '?mode=lite'); enterLite(); }
+    else openTab('roads');
   });
   $('#welcome').onclick = e => { if (e.target.id === 'welcome') $('#welcome').hidden = true; };
 }
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') { $('#welcome').hidden = true; $('#baseMenu').hidden = true; if (S.mode) { if (S.mode === 'measure') finishMeasure(); setMode(null); } else if (S.selected) closeInfo(); }
+  if (e.key !== 'Escape') return;
+  if (!$('#caseModal').hidden) return closeCase();
+  $('#welcome').hidden = true; $('#baseMenu').hidden = true;
+  if (S.mode) { if (S.mode === 'measure') finishMeasure(); setMode(null); } else if (S.selected) closeInfo();
 });
-if (isMobile()) setSheet(location.hash && !location.hash.startsWith('#road=') ? 'half' : 'peek');
+if (isMobile() && !document.body.classList.contains('lite')) setSheet(location.hash && !location.hash.startsWith('#road=') ? 'half' : 'peek');
 })();

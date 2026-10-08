@@ -8,6 +8,10 @@ window.APP_CONFIG = {
      部署方式見 gas/README.md；留空時通報僅暫存於使用者瀏覽器並可下載通報單。 */
   reportEndpoint: '',
 
+  /* LINE 官方帳號 ID（例：'@123abcde'）。設定後，通報成功頁會出現「LINE 接收進度」按鈕；
+     另需在後台「設定」填入 Messaging API Channel Access Token，並把 Webhook URL 設為後端網址。 */
+  lineOaId: '',
+
   /* 公所聯絡資訊（留空則不顯示） */
   officePhone: '',
   officeEmail: '',

@@ -13,7 +13,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/style.css?v=20261008b">
+<link rel="stylesheet" href="css/style.css?v=20261008c">
+<link rel="stylesheet" href="css/loop.css?v=20261008c">
 </head>
 <body>
 
@@ -44,6 +45,7 @@
     </div>
   </header>
 
+  <div class="lite-bar"><b>📣 快速通報</b><a href="./" id="toFull">切換完整版 →</a></div>
   <nav class="tabs" role="tablist" aria-label="功能分頁">
     <button role="tab" data-tab="roads" aria-selected="true"><i class="ico">🛣️</i><span>道路</span></button>
     <button role="tab" data-tab="cases"><i class="ico">🚧</i><span>施工</span></button>
@@ -89,11 +91,19 @@
         <h2>民眾通報看板</h2>
         <label class="switch"><input type="checkbox" id="liveToggle"> <span>顯示通報案件</span></label>
         <div class="legend-inline">
-          <span><i class="dot" style="background:#E3001B"></i>待處理</span>
-          <span><i class="dot" style="background:#F39200"></i>處理中</span>
-          <span><i class="dot" style="background:#2E9E4F"></i>已完成</span>
+          <span><i class="dot" style="background:#E3001B"></i>已立案</span>
+          <span><i class="dot" style="background:#F39200"></i>已派工</span>
+          <span><i class="dot" style="background:#1C5FC4"></i>已完工</span>
+          <span><i class="dot" style="background:#2E9E4F"></i>已驗收</span>
         </div>
         <p class="muted small" id="liveHint"></p>
+        <div class="search-box"><input id="caseLookup" type="search" placeholder="輸入案號查詢，例如 AD1151008-001" aria-label="案號查詢"></div>
+      </div>
+
+      <div class="card">
+        <h2>資料開放</h2>
+        <p class="muted">去識別化案件資料，含案件編號、通報／派工／完工日期、TWD97 與 WGS84 雙座標、搶修類型、施工廠商與決標金額，歡迎學術研究與全民監督。</p>
+        <button class="btn ghost full" id="openDataCsv">⬇️ 下載開放資料 CSV</button>
       </div>
 
       <div class="card">
@@ -111,7 +121,8 @@
       <form id="reportForm" novalidate>
         <div class="step" data-step="1">
           <h2>1. 拍下現場</h2>
-          <p class="muted">照片若含 GPS 資訊，系統會自動帶入位置。照片僅供公所處理通報使用，不會公開於地圖。</p>
+          <p class="muted">照片若含 GPS 資訊，系統會自動帶入位置。</p>
+          <div class="privacy-note">🛡️ <b>AI 隱私保護</b>：照片會在<b>您的手機上</b>自動遮蔽人臉與車牌，原始照片不會上傳。</div>
           <label class="drop" id="photoDrop">
             <input type="file" id="photoInput" accept="image/*" multiple hidden>
             <span class="drop-ico">📷</span>
@@ -130,6 +141,7 @@
             <button type="button" class="btn ghost" id="pickOnMap">🖱️ 在地圖上點選</button>
           </div>
           <div class="loc-box" id="locBox">尚未選擇位置</div>
+          <div class="dup-box" id="dupBox" hidden></div>
           <div class="btn-row"><button type="button" class="btn ghost" data-prev>上一步</button><button type="button" class="btn primary" data-next>下一步：描述狀況</button></div>
         </div>
 
@@ -137,11 +149,16 @@
           <h2>3. 描述狀況</h2>
           <div class="chip-group" id="issueChips" role="radiogroup" aria-label="狀況類別"></div>
           <label class="field">說明
-            <textarea id="issueDesc" rows="3" maxlength="300" placeholder="例：路面坑洞約 1 公尺寬，機車經過危險"></textarea>
+            <span class="desc-wrap"><textarea id="issueDesc" rows="3" maxlength="500" placeholder="例：路面坑洞約 1 公尺寬，機車經過危險"></textarea>
+            <button type="button" class="mic" id="micBtn" aria-label="語音輸入" title="語音輸入" hidden>🎤</button></span>
           </label>
+          <p class="small muted" id="micHint" hidden>可按 🎤 用說的，系統會轉成文字（語音辨識由瀏覽器提供）。</p>
           <p class="small muted">公開看板只顯示類別、位置與處理狀態；說明、照片與聯絡方式僅公所承辦人員可見。</p>
           <label class="field">聯絡方式（選填，不公開）
             <input id="contact" type="text" maxlength="60" placeholder="姓名／電話，方便公所回覆">
+          </label>
+          <label class="field">Email（選填，接收進度通知）
+            <input id="email" type="email" maxlength="120" placeholder="name@example.com" autocomplete="email">
           </label>
           <input type="text" id="hp" name="website" tabindex="-1" autocomplete="off" class="hp" aria-hidden="true">
           <div class="btn-row"><button type="button" class="btn ghost" data-prev>上一步</button><button type="button" class="btn primary" data-next>下一步：確認送出</button></div>
@@ -150,6 +167,7 @@
         <div class="step" data-step="4" hidden>
           <h2>4. 確認送出</h2>
           <div id="reviewBox" class="review"></div>
+          <div id="captchaBox" class="captcha-box"></div>
           <div class="btn-row">
             <button type="button" class="btn ghost" data-prev>上一步</button>
             <button type="submit" class="btn primary" id="submitReport">🚀 送出通報</button>
@@ -157,6 +175,8 @@
           <p class="muted small" id="submitNote"></p>
         </div>
       </form>
+
+      <div class="card done-card" id="reportDone" hidden></div>
 
       <div class="card tone-red small-card">
         緊急危險（坍方、路樹倒塌阻斷交通）請直接撥打 <a href="tel:1999"><b>1999</b></a> 臺南市民服務專線，或 <a href="tel:110"><b>110</b></a>。
@@ -253,18 +273,20 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<!-- ===== 案件頁 ===== -->
+<div class="case-modal" id="caseModal" hidden role="dialog" aria-modal="true" aria-label="案件資訊"><div class="case-sheet" id="caseSheet"></div></div>
+
 <!-- ===== 首次進入導覽 ===== -->
 <div class="welcome" id="welcome" hidden>
   <div class="welcome-card">
     <p class="eyebrow">臺南市安定區</p>
     <h2>公眾通行道路圖資系統</h2>
     <p class="muted">查詢 13 里農路、產業道路與區道，回報路面問題，追蹤施工進度。</p>
-    <div class="welcome-grid">
-      <button data-go="roads"><span>🛣️</span><b>查道路</b><small>路名、里別、長度</small></button>
-      <button data-go="report"><span>📣</span><b>我要通報</b><small>坑洞、坍方、路樹</small></button>
-      <button data-go="cases"><span>🚧</span><b>看施工</b><small>維修案件公開</small></button>
-      <button data-go="tools"><span>🧭</span><b>工具</b><small>座標、半徑、量測</small></button>
+    <div class="welcome-modes">
+      <button data-mode="lite" class="mode-lite"><span>📣</span><b>快速通報</b><small>輕量版｜拍照、定位、送出</small></button>
+      <button data-mode="full" class="mode-full"><span>🗺️</span><b>完整查詢</b><small>道路圖資、施工公開、工具</small></button>
     </div>
+    <div class="welcome-links"><a href="vendor.html">🏗️ 廠商回報中心</a><a href="admin.html">🔐 公所管理後台</a></div>
     <label class="small muted"><input type="checkbox" id="welcomeSkip"> 下次不再顯示</label>
   </div>
 </div>
@@ -272,7 +294,9 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js"></script>
-<script src="js/config.js?v=20261008b"></script>
-<script src="js/app.js?v=20261008b"></script>
+<script src="js/config.js?v=20261008c"></script>
+<script src="js/common.js?v=20261008c"></script>
+<script src="js/deid.js?v=20261008c"></script>
+<script src="js/app.js?v=20261008c"></script>
 </body>
 </html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>廠商回報中心｜安定區公眾通行道路圖資系統</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=20261008c">
+<link rel="stylesheet" href="css/loop.css?v=20261008c">
+<link rel="stylesheet" href="css/admin.css?v=20261008c">
+</head>
+<body class="admin vendor">
+
+<section id="loginView" class="login-wrap">
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <p class="eyebrow">臺南市安定區公所</p>
+    <h1>廠商回報中心</h1>
+    <p class="muted">開口契約廠商專用：查看派工、精準導航、上傳施工前中後照片與履約文件。</p>
+    <label class="field">廠商帳號<input id="user" name="username" autocomplete="username" required maxlength="32" autocapitalize="off" spellcheck="false"></label>
+    <label class="field">專屬密碼<input id="pwd" name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+    <button class="btn primary full" id="loginBtn" type="submit">登入</button>
+    <p class="login-msg" id="loginMsg" role="alert"></p>
+    <p class="small muted">密碼為各廠商專屬，更換廠商即更換密碼。忘記密碼請洽公所承辦人。</p>
+    <a class="small" href="./">← 回到道路圖資系統</a>
+  </form>
+</section>
+
+<section id="appView" hidden>
+  <header class="topbar">
+    <div class="tb-brand"><span class="eyebrow">安定區</span><b>廠商回報中心</b></div>
+    <nav class="tb-tabs" role="tablist" id="vTabs">
+      <button role="tab" data-s="已派工" aria-selected="true">待施工</button>
+      <button role="tab" data-s="已完工">待驗收</button>
+      <button role="tab" data-s="已驗收">已驗收</button>
+    </nav>
+    <div class="tb-user">
+      <span class="role-badge handler">廠商</span><span id="vendorName"></span>
+      <button class="btn ghost sm" id="refreshBtn" title="重新整理">↻</button>
+      <button class="btn ghost sm" id="logoutBtn">登出</button>
+    </div>
+  </header>
+  <main class="page-view vendor-grid">
+    <div>
+      <div class="filter-row"><label>派工日期 從 <input type="date" id="fFrom"></label><label>到 <input type="date" id="fTo"></label></div>
+      <ul class="case-list" id="caseList"></ul>
+    </div>
+    <div id="detail" class="vendor-detail"><p class="muted">請從左側選擇案件。</p></div>
+  </main>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="js/config.js?v=20261008c"></script>
+<script src="js/common.js?v=20261008c"></script>
+<script src="js/deid.js?v=20261008c"></script>
+<script src="js/vendor.js?v=20261008c"></script>
+</body>
+</html>

@@ -5,14 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<title>通報管理後台｜安定區道路圖資</title>
+<title>管理後台｜安定區公眾通行道路圖資系統</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/style.css?v=20261008b">
-<link rel="stylesheet" href="css/admin.css?v=20261008b">
+<link rel="stylesheet" href="css/style.css?v=20261008c">
+<link rel="stylesheet" href="css/loop.css?v=20261008c">
+<link rel="stylesheet" href="css/admin.css?v=20261008c">
 </head>
 <body class="admin">
 
@@ -20,13 +21,13 @@
 <section id="loginView" class="login-wrap">
   <form class="login-card" id="loginForm" autocomplete="on">
     <p class="eyebrow">臺南市安定區公所</p>
-    <h1>通報管理後台</h1>
-    <p class="muted">僅限授權人員使用。登入後可檢視民眾通報內容、照片並更新處理狀態。</p>
+    <h1>管理後台</h1>
+    <p class="muted">僅限授權的公所人員。可審核派工、驗收、回覆民眾與檢視數位軌跡。</p>
     <label class="field">帳號<input id="user" name="username" autocomplete="username" required maxlength="32" autocapitalize="off" spellcheck="false"></label>
     <label class="field">密碼<input id="pwd" name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
     <button class="btn primary full" id="loginBtn" type="submit">登入</button>
     <p class="login-msg" id="loginMsg" role="alert"></p>
-    <p class="small muted">連續輸錯 5 次將暫停登入 15 分鐘。登入有效 8 小時，關閉分頁即登出。</p>
+    <p class="small muted">連續輸錯 5 次將暫停登入 15 分鐘。登入有效 8 小時，關閉分頁即登出。<br>廠商請改用 <a href="vendor.html">廠商回報中心</a>。</p>
     <a class="small" href="./">← 回到道路圖資系統</a>
   </form>
 </section>
@@ -34,10 +35,13 @@
 <!-- ===== 後台 ===== -->
 <section id="appView" hidden>
   <header class="topbar">
-    <div class="tb-brand"><span class="eyebrow">安定區</span><b>通報管理後台</b></div>
+    <div class="tb-brand"><span class="eyebrow">安定區</span><b>管理後台</b></div>
     <nav class="tb-tabs" role="tablist">
       <button role="tab" data-view="cases" aria-selected="true">案件</button>
-      <button role="tab" data-view="log" id="logTabBtn" hidden>操作紀錄</button>
+      <button role="tab" data-view="contracts">開口契約</button>
+      <button role="tab" data-view="accounts" data-admin hidden>帳號</button>
+      <button role="tab" data-view="settings" data-admin hidden>設定</button>
+      <button role="tab" data-view="chain" data-admin hidden>數位軌跡</button>
     </nav>
     <div class="tb-user">
       <span class="role-badge" id="roleBadge"></span>
@@ -48,11 +52,12 @@
     </div>
   </header>
 
-  <main class="admin-grid" id="casesView">
+  <!-- 案件 -->
+  <main class="admin-grid" id="view-cases">
     <div class="admin-left">
       <div class="kpis" id="kpis"></div>
       <div class="filters">
-        <input type="search" id="fq" placeholder="搜尋案號、說明、道路、聯絡方式…" aria-label="搜尋">
+        <input type="search" id="fq" placeholder="搜尋案號、說明、道路、廠商、聯絡方式…" aria-label="搜尋">
         <div class="filter-row">
           <select id="fType" aria-label="類別"><option value="">全部類別</option></select>
           <select id="fVillage" aria-label="里別"><option value="">全部里別</option></select>
@@ -63,21 +68,89 @@
         </div>
         <div class="filter-row end">
           <span class="small muted" id="resultCount"></span>
-          <button class="btn ghost sm" id="exportBtn" hidden>匯出 CSV</button>
+          <span>
+            <button class="btn sm" id="createBtn" data-handler hidden>＋代為登錄</button>
+            <button class="btn ghost sm" id="exportBtn" data-admin hidden>匯出 CSV</button>
+          </span>
         </div>
       </div>
       <ul class="case-list" id="caseList"></ul>
     </div>
     <div class="admin-map-wrap">
       <div id="adminMap"></div>
+      <div class="map-layers" id="mapLayers">
+        <label><input type="checkbox" data-layer="roads" checked> 公眾通行道路</label>
+        <label><input type="checkbox" data-layer="land"> 地籍圖</label>
+        <label><input type="checkbox" data-layer="photo"> 正射影像</label>
+      </div>
+      <div class="map-hint" id="pickHint" hidden>點選地圖設定案件位置</div>
       <aside class="detail" id="detail" hidden aria-live="polite"></aside>
     </div>
   </main>
 
-  <main id="logView" class="log-view" hidden>
+  <!-- 開口契約 -->
+  <main class="page-view" id="view-contracts" hidden>
     <div class="card">
-      <h2>操作紀錄（最近 200 筆）</h2>
-      <div class="table-wrap"><table class="log-table"><thead><tr><th>時間</th><th>帳號</th><th>動作</th><th>內容</th></tr></thead><tbody id="logBody"></tbody></table></div>
+      <h2>開口契約與預算控管</h2>
+      <p class="muted">派工時系統自動加總每份契約已派工金額；超過契約限額時，派工會被自動阻斷。</p>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>編號</th><th>契約名稱</th><th>廠商</th><th>年度</th><th>限額</th><th>已派工</th><th>剩餘</th><th>執行率</th><th>狀態</th><th></th></tr></thead><tbody id="contractBody"></tbody></table></div>
+    </div>
+    <form class="card" id="contractForm" data-admin hidden>
+      <h2 id="contractFormTitle">新增開口契約</h2>
+      <input type="hidden" id="kId">
+      <div class="form-grid">
+        <label class="field">契約名稱<input id="kName" required maxlength="80"></label>
+        <label class="field">廠商名稱<input id="kVendor" required maxlength="60"></label>
+        <label class="field">年度（民國）<input id="kYear" required maxlength="3" inputmode="numeric" pattern="\d{3}"></label>
+        <label class="field">契約限額（元）<input id="kLimit" required type="number" min="1" step="1"></label>
+        <label class="field">狀態<select id="kStatus"><option>啟用</option><option>停用</option></select></label>
+      </div>
+      <div class="btn-row"><button class="btn ghost" type="reset" id="kReset">清除</button><button class="btn primary" type="submit">儲存契約</button></div>
+    </form>
+  </main>
+
+  <!-- 帳號 -->
+  <main class="page-view" id="view-accounts" hidden>
+    <div class="card">
+      <h2>帳號管理</h2>
+      <p class="muted">廠商帳號只能看到並回報自己契約的案件。<b>更換廠商時，請立即停用舊帳號或重設密碼</b>，舊的登入會同時失效。</p>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>帳號</th><th>角色</th><th>廠商</th><th>狀態</th><th></th></tr></thead><tbody id="accountBody"></tbody></table></div>
+    </div>
+    <form class="card" id="accountForm">
+      <h2>新增／修改帳號</h2>
+      <div class="form-grid">
+        <label class="field">帳號<input id="aUser" required maxlength="32" pattern="[a-z0-9._\-]{3,32}" autocapitalize="off" spellcheck="false" placeholder="英數字 3–32 碼"></label>
+        <label class="field">角色<select id="aRole"><option value="vendor">廠商</option><option value="viewer">檢視者</option><option value="handler">承辦人</option><option value="admin">管理者</option></select></label>
+        <label class="field">廠商名稱（廠商帳號必填）<input id="aVendor" maxlength="60" list="vendorNames"></label>
+        <label class="field">密碼（新帳號必填；修改時留空表示不變）<input id="aPwd" type="password" minlength="10" maxlength="128" autocomplete="new-password"></label>
+        <label class="field check"><input type="checkbox" id="aDisabled"> 停用此帳號</label>
+      </div>
+      <datalist id="vendorNames"></datalist>
+      <div class="btn-row"><button class="btn ghost" type="reset">清除</button><button class="btn primary" type="submit">儲存帳號</button></div>
+    </form>
+  </main>
+
+  <!-- 設定 -->
+  <main class="page-view" id="view-settings" hidden>
+    <form class="card" id="settingsForm">
+      <h2>通知設定</h2>
+      <label class="field">本所通知信箱（多組，以逗號分隔；新通報、留言、完工回報都會通知，避免漏案）
+        <textarea id="sEmails" rows="2" placeholder="road@example.gov.tw, chief@example.gov.tw"></textarea></label>
+      <label class="field">網站網址（通知信中的連結）<input id="sSite" type="url"></label>
+      <label class="field">LINE Messaging API Channel Access Token（只寫入，不顯示）<input id="sLine" type="password" autocomplete="off" placeholder="未設定"></label>
+      <label class="field check"><input type="checkbox" id="sLineClear"> 清除 LINE Token</label>
+      <p class="small muted">LINE 官方帳號的 Webhook URL 請設為後端網址：<code id="webhookUrl"></code>；並在 <code>js/config.js</code> 的 <code>lineOaId</code> 填入官方帳號 ID（如 @123abcde）。</p>
+      <div class="btn-row"><button class="btn primary" type="submit">儲存設定</button></div>
+    </form>
+  </main>
+
+  <!-- 數位軌跡 -->
+  <main class="page-view" id="view-chain" hidden>
+    <div class="card">
+      <h2>數位軌跡（雜湊鏈）</h2>
+      <p class="muted">每個事件以 SHA-256 與前一筆串接。直接修改、刪除或插入試算表中的任何一列，驗證都會在該處斷鏈。</p>
+      <div id="chainStatus"></div>
+      <div class="table-wrap"><table class="data-table log-table"><thead><tr><th>#</th><th>時間</th><th>帳號</th><th>事件</th><th>案號</th><th>內容</th><th>雜湊</th></tr></thead><tbody id="chainBody"></tbody></table></div>
     </div>
   </main>
 </section>
@@ -86,7 +159,9 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-<script src="js/config.js?v=20261008b"></script>
-<script src="js/admin.js?v=20261008b"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="js/config.js?v=20261008c"></script>
+<script src="js/common.js?v=20261008c"></script>
+<script src="js/admin.js?v=20261008c"></script>
 </body>
 </html>
